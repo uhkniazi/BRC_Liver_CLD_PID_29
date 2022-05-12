@@ -1,6 +1,6 @@
 # Name: geoDownload_EDA.R
 # Auth: Umar Niazi umar.niazi@kcl.ac.uk
-# Date: 29/4/2022
+# Date: 11/5/2022
 # Desc: Download the relevant datasets, normalise and perform EDA
 
 source('header.R')
@@ -9,46 +9,12 @@ library(GEOquery)
 library(downloader)
 
 ## open the soft format and raw data
-gse =  getGEO(filename = 'dataExternal/serena/GSE84954_series_matrix.txt.gz')
-
-# ## read raw data CEL files and normalize
-# library(affy)
-# setwd('dataExternal/serena/')
-# untar('GSE84954_RAW.tar')
-# oData = ReadAffy()
-# setwd(gcsWD)
-# # normalize the data
-# x.affy = rma(oData)
+gse =  getGEO(filename = 'dataExternal/GSE84954_series_matrix.txt.gz')
 
 # get the samples from the expression set object
 dfSamples = pData(gse)
 dim(exprs(gse))
 identical(rownames(dfSamples), colnames(exprs(gse)))
-
-# # col names of the affy expression matrix
-# cn = colnames(exprs(x.affy))
-# # remove the last .CEL.gz from the names
-# cn = gsub('^(GSM\\d+).CEL\\.gz', replacement = '\\1', cn, perl = T)
-
-# order the sample names according to cel files
-# table(cn %in% rownames(dfSamples))
-# i = match(cn, rownames(dfSamples))
-# dfSamples = dfSamples[i,]
-# ## sanity check
-# identical(rownames(dfSamples), cn)
-
-# ## complete the expression set object by adding this sample information
-# pData(x.affy) = dfSamples
-# colnames(exprs(x.affy)) = cn
-# # sanity check
-# identical(colnames(x.affy), rownames(pData(x.affy)))
-
-# ## annotation data
-# fData(x.affy) = fData(gse)
-# ## store the grouping factors in affy object
-# x.affy$fCondition = dfSamples$group1
-# x.affy$fGender = dfSamples$group2
-# x.affy$age = as.numeric(as.character(dfSamples$group3))
 
 ## check normalisation 
 url = 'https://raw.githubusercontent.com/uhkniazi/CDiagnosticPlots/master/CDiagnosticPlots.R'
@@ -63,7 +29,7 @@ mCounts = exprs(gse)
 range(mCounts)
 
 oDiag.1 = CDiagnosticPlots(log(mCounts), 'Soft Log format')
-oDiag.2 = CDiagnosticPlots(mCounts, 'Soft format')
+# oDiag.2 = CDiagnosticPlots(mCounts, 'Soft format')
 colnames(dfSamples)
 fDisease = factor(gse$`disease:ch1`)
 fSubject = factor(gse$`subjectid:ch1`)
