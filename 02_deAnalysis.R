@@ -40,7 +40,7 @@ identical(colnames(mData), rownames(dfSample))
 
 ### set up data for modelling with stan
 mData.orig = mData
-mData = mData.orig[1:3,]
+mData = t(as.matrix(mData.orig[1,]))
 dim(mData)
 
 plot(density(mData))
@@ -69,3 +69,52 @@ rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
 
 stanDso = rstan::stan_model(file='tResponse1RandomEffectsMultipleScales.stan')
+
+
+### setup data object for stan and run model
+## subset the data to get the second level of nested parameters
+## this is done to avoid loops in the stan script to map the scale parameters
+## of each ind/gene to the respective set of coefficients for jitters
+d = dfData[!duplicated(dfData$Coef), ]
+#d2 = dfData[!duplicated(dfData$Coef.2), ]
+
+lStanData = list(Ntotal=nrow(dfData), 
+                 Nclusters1=nlevels(dfData$Coef),
+                 #Nclusters2=nlevels(dfData$Coef.2),
+                 NScaleBatches1 = nlevels(dfData$ind), # to add a separate scale term for each gene
+                 #NScaleBatches2 = nlevels(dfData$ind), # to add a separate scale term for each gene
+                 NgroupMap1=as.numeric(dfData$Coef),
+                 #NgroupMap2=as.numeric(dfData$Coef.2),
+                 NBatchMap1=as.numeric(d$ind), # this is where we use the second level mapping
+                 #NBatchMap2=as.numeric(d2$ind), # this is where we use the second level mapping
+                 Nnu=nlevels(dfData$ind),
+                 NsigmaPop=nlevels(dfData$ind),
+                 NnuMap=as.numeric(dfData$ind),
+                 NsigmaPopMap=as.numeric(dfData$ind),
+                 y=dfData$values, 
+                 intercept = mean(dfData$values), intercept_sd= sd(dfData$values)*3)
+
+initf = function(chain_id = 1) {
+  list(sigmaRan1 = rep(1, times=lStanData$NScaleBatches1),
+       #sigmaRan2= rep(0.1, times=lStanData$NScaleBatches2),
+       rGroupsJitter1 = rep(0, times=lStanData$Nclusters1))
+       #rGroupsJitter2_scaled = rep(0, times=lStanData$Nclusters2),
+       #phi_scaled=rep(15, times=lStanData$Nphi))
+}
+
+
+ptm = proc.time()
+
+fit.stan = sampling(stanDso, data=lStanData, iter=500, chains=2,
+                    pars=c('sigmaRan1',
+                           #'sigmaRan2',
+                           'nu',
+                           'mu',
+                           'rGroupsJitter1',
+                           #'rGroupsJitter2',
+                           'betas',
+                           'sigmaPop'
+                    ),
+                    cores=2)#, control=list(adapt_delta=0.99, max_treedepth = 11), init=initf)
+#save(fit.stan, file='results/fit.stan.nb_3Mar.rds')
+ptm.end = proc.time()
