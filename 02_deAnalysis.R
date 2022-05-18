@@ -21,8 +21,36 @@ dbDisconnect(db)
 ## load the downloaded data and extract matrix
 library(GEOquery)
 gse =  getGEO(filename = 'dataExternal/GSE84954_series_matrix.txt.gz')
-mData = exprs(gse)#log(exprs(gse)+0.5)
+## load the annotation
+library(org.Hs.eg.db)
+x = org.Hs.eg.db
+gpl = getGEO(annotation(gse))
+dfAnnotation = gpl@dataTable@table
+table(dfAnnotation$ID %in% as.numeric(rownames(gse)))
+## select the probes that have a gene id
+i = which(dfAnnotation$GB_ACC %in% '')
+dfAnnotation = dfAnnotation[-i,]
+dim(dfAnnotation)
+df = select(x, keys = dfAnnotation$GB_ACC, columns = 'ENTREZID', keytype = 'REFSEQ')
+## some probes have no corresponding REFSEQ to ENTREZ entry, remove those
+table(is.na(df$ENTREZID))
+df = na.omit(df)
+dim(df)
+## some genes are annotated multiple times having multiple probes
+table(duplicated(df$REFSEQ))
+## don't remove these duplicated probes for this analysis
+i = dfAnnotation$GB_ACC %in% df$REFSEQ
+table(i)
+dfAnnotation = dfAnnotation[i,]
+## remove the non-matching probes from the expression matrix
+i = rownames(gse) %in% as.character(dfAnnotation$ID)
+table(i)
+gse = gse[i,]
+dim(gse)
+
+mData = exprs(gse)
 dim(mData)
+plot(density(mData))
 rn = dfSample$description
 rn = strsplit(rn, ';')
 rn = sapply(rn, function(x) return(x[2]))
@@ -40,7 +68,9 @@ identical(colnames(mData), rownames(dfSample))
 
 ### set up data for modelling with stan
 mData.orig = mData
-i = which(rownames(mData.orig) %in% c('16727967', '16681593', '16972339'))
+#i = which(rownames(mData.orig) %in% c('16727967', '16681593', '16972339'))
+cvSel = scan(what=character())
+i = which(rownames(mData.orig) %in% cvSel)
 length(i)
 mData = (as.matrix(mData.orig[i,]))
 dim(mData)
@@ -65,6 +95,8 @@ dfData = droplevels.data.frame(dfData)
 #dfData = dfData[order(dfData$Coef, dfData$Coef.adj1, dfData$Coef.adj2), ]
 str(dfData)
 
+# these db packages interfere with stan so unload 
+detach('package:org.Hs.eg.db', unload=T)
 ## setup the stan model
 library(rstan)
 rstan_options(auto_write = TRUE)
@@ -110,7 +142,7 @@ ptm = proc.time()
 fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=2,
                     pars=c('sigmaRan1',
                            #'sigmaRan2',
-                           #'nu',
+                           'nu',
                            #'mu',
                            'rGroupsJitter1',
                            #'rGroupsJitter2',
