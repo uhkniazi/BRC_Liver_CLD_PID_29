@@ -21,7 +21,7 @@ dbDisconnect(db)
 ## load the downloaded data and extract matrix
 library(GEOquery)
 gse =  getGEO(filename = 'dataExternal/GSE84954_series_matrix.txt.gz')
-mData = exprs(gse)
+mData = exprs(gse)#log(exprs(gse)+0.5)
 dim(mData)
 rn = dfSample$description
 rn = strsplit(rn, ';')
@@ -40,7 +40,9 @@ identical(colnames(mData), rownames(dfSample))
 
 ### set up data for modelling with stan
 mData.orig = mData
-mData = t(as.matrix(mData.orig[1,]))
+i = which(rownames(mData.orig) %in% c('16727967', '16681593', '16972339'))
+length(i)
+mData = (as.matrix(mData.orig[i,]))
 dim(mData)
 
 plot(density(mData))
@@ -105,16 +107,75 @@ initf = function(chain_id = 1) {
 
 ptm = proc.time()
 
-fit.stan = sampling(stanDso, data=lStanData, iter=500, chains=2,
+fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=2,
                     pars=c('sigmaRan1',
                            #'sigmaRan2',
-                           'nu',
-                           'mu',
+                           #'nu',
+                           #'mu',
                            'rGroupsJitter1',
                            #'rGroupsJitter2',
                            'betas',
                            'sigmaPop'
                     ),
-                    cores=2)#, control=list(adapt_delta=0.99, max_treedepth = 11), init=initf)
+                    cores=2, init=initf)#, control=list(adapt_delta=0.99, max_treedepth = 11), init=initf)
 #save(fit.stan, file='results/fit.stan.nb_3Mar.rds')
 ptm.end = proc.time()
+print(fit.stan)
+## compare with lme4
+# library(lme4)
+# fit.lme = lmer(values ~ 1 + (1 | Coef), data=dfData)
+# summary(fit.lme)
+
+## extract results
+## get the coefficient of interest - Coef.1 (treatment) in our case from the random coefficients section
+mCoef = extract(fit.stan)$rGroupsJitter1
+dim(mCoef)
+# # ## get the intercept at population level
+# iIntercept = as.numeric(extract(fit.stan)$betas)
+# ## add the intercept to each random effect variable, to get the full coefficient
+# mCoef = sweep(mCoef, 1, iIntercept, '+')
+
+## function to calculate statistics for differences between coefficients
+getDifference = function(ivData, ivBaseline){
+  stopifnot(length(ivData) == length(ivBaseline))
+  # get the difference vector
+  d = ivData - ivBaseline
+  # get the z value
+  z = mean(d)/sd(d)
+  # get 2 sided p-value
+  p = pnorm(-abs(mean(d)/sd(d)))*2
+  return(list(z=z, p=p))
+}
+
+## split the data into the comparisons required
+d = data.frame(cols=1:ncol(mCoef), mods=levels(dfData$Coef))
+# the split is done below on : symbol, but factor name has a : symbol due
+# to creation of interaction earlier, do some acrobatics to sort that issue
+## split this factor into sub factors
+f = strsplit(as.character(d$mods), ':')
+d = cbind(d, do.call(rbind, f))
+head(d)
+# d$`1` = d$`1`:d$`2`
+# d = d[,-4]
+colnames(d) = c(colnames(d)[1:2], c('fBatch', 'ind'))
+str(d)
+d$split = factor(d$ind)
+
+levels(d$fBatch)
+## repeat this for each comparison
+
+## get a p-value for each comparison
+l = tapply(d$cols, d$split, FUN = function(x, base='CLD-BA', deflection='CN') {
+  c = x
+  names(c) = as.character(d$fBatch[c])
+  dif = getDifference(ivData = mCoef[,c[deflection]], ivBaseline = mCoef[,c[base]])
+  r = data.frame(ind= as.character(d$ind[c[base]]), coef.base=mean(mCoef[,c[base]]), 
+                 coef.deflection=mean(mCoef[,c[deflection]]), zscore=dif$z, pvalue=dif$p)
+  r$difference = r$coef.deflection - r$coef.base
+  #return(format(r, digi=3))
+  return(r)
+})
+
+dfResults = do.call(rbind, l)
+#dfResults$adj.P.Val = p.adjust(dfResults$pvalue, method='BH')
+

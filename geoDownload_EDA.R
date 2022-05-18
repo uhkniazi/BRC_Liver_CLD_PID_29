@@ -28,7 +28,7 @@ unlink('CDiagnosticPlots.R')
 mCounts = exprs(gse)
 range(mCounts)
 
-oDiag.1 = CDiagnosticPlots(log(mCounts), 'Soft Log format')
+oDiag.1 = CDiagnosticPlots(mCounts, 'Soft format')
 # oDiag.2 = CDiagnosticPlots(mCounts, 'Soft format')
 colnames(dfSamples)
 fDisease = factor(gse$`disease:ch1`)
@@ -79,15 +79,15 @@ par(mfrow=c(1,1))
 plot.PCA(oDiag.1.2, fBatch, legend.pos = 'topleft')
 plot.PCA(oDiag.2.2, fBatch, legend.pos = 'bottomright')
 
-### use the data from each tissue separately and in log format
+### use the data from each tissue separately and not in log format
 iLiver = which(fTissue == 'liver')
 gse.Liver = gse[, iLiver]
 
 ### repeat the analysis on only one tissue
-mCounts = log(exprs(gse.Liver))
+mCounts = (exprs(gse.Liver))
 range(mCounts)
 
-oDiag.L = CDiagnosticPlots(mCounts, 'Liver: log Soft Format')
+oDiag.L = CDiagnosticPlots(mCounts, 'Liver:  Soft Format')
 fSubject = factor(gse.Liver$`subjectid:ch1`)
 fDisease = factor(gse.Liver$`disease:ch1`)
 levels(fDisease); levels(fSubject)
@@ -104,15 +104,15 @@ oDiag.L = CDiagnosticPlotsSetParameters(oDiag.L, l)
 plot.PCA(oDiag.L, fBatch, csLabels = as.character(fSubject), cex=1.5)
 
 ### muscle tissue
-### use the data from each tissue separately and in log format
+### use the data from each tissue separately and not in log format
 iMuscle = grep('muscle', gse$`tissue:ch1`)
 gse.Muscle = gse[, iMuscle]
 
 ### repeat the analysis on only one tissue
-mCounts = log(exprs(gse.Muscle))
+mCounts = (exprs(gse.Muscle))
 range(mCounts)
 
-oDiag.M = CDiagnosticPlots(mCounts, 'Muscle: log Soft Format')
+oDiag.M = CDiagnosticPlots(mCounts, 'Muscle:  Soft Format')
 fSubject = factor(gse.Muscle$`subjectid:ch1`)
 fDisease = factor(gse.Muscle$`disease:ch1`)
 levels(fDisease); levels(fSubject)
@@ -129,15 +129,15 @@ oDiag.M = CDiagnosticPlotsSetParameters(oDiag.M, l)
 plot.PCA(oDiag.M, fBatch, csLabels = as.character(fSubject), cex=1.5)
 
 ### fat tissue
-### use the data from each tissue separately and in log format
+### use the data from each tissue separately and not in log format
 iFat = grep('fat', gse$`tissue:ch1`)
 gse.Fat = gse[, iFat]
 
 ### repeat the analysis on only one tissue
-mCounts = log(exprs(gse.Fat))
+mCounts = (exprs(gse.Fat))
 range(mCounts)
 
-oDiag.F = CDiagnosticPlots(mCounts, 'Fat: log Soft Format')
+oDiag.F = CDiagnosticPlots(mCounts, 'Fat: Soft Format')
 fSubject = factor(gse.Fat$`subjectid:ch1`)
 fDisease = factor(gse.Fat$`disease:ch1`)
 levels(fDisease); levels(fSubject)
