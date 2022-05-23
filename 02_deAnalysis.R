@@ -18,6 +18,12 @@ head(dfSample)
 # close connection after getting data
 dbDisconnect(db)
 
+## load additional metadata 
+df = read.csv(file.choose(), header=T)
+identical(dfSample$id, df$id)
+dfSample = df
+rm(df)
+
 ## load the downloaded data and extract matrix
 library(GEOquery)
 gse =  getGEO(filename = 'dataExternal/GSE84954_series_matrix.txt.gz')
@@ -29,6 +35,7 @@ dfAnnotation = gpl@dataTable@table
 table(dfAnnotation$ID %in% as.numeric(rownames(gse)))
 ## select the probes that have a gene id
 i = which(dfAnnotation$GB_ACC %in% '')
+length(i)
 dfAnnotation = dfAnnotation[-i,]
 dim(dfAnnotation)
 df = select(x, keys = dfAnnotation$GB_ACC, columns = 'ENTREZID', keytype = 'REFSEQ')
@@ -69,17 +76,18 @@ identical(colnames(mData), rownames(dfSample))
 ### set up data for modelling with stan
 mData.orig = mData
 #i = which(rownames(mData.orig) %in% c('16727967', '16681593', '16972339'))
-cvSel = scan(what=character())
+cvSel = '17006392'#scan(what=character())
 i = which(rownames(mData.orig) %in% cvSel)
 length(i)
 mData = (as.matrix(mData.orig[i,]))
 dim(mData)
+dim(dfSample)
 
 plot(density(mData))
 range(mData)
 
 ## prepare covariates for model matrix
-dfData = data.frame(t(mData))
+dfData = data.frame((mData))
 dim(dfData); dim(dfSample);
 dfData = stack(dfData)
 dim(dfData)
@@ -89,7 +97,13 @@ f = factor(dfSample$group1)
 levels(f)
 
 dfData$fTreatment = f
-dfData$Coef = factor(dfData$fTreatment:dfData$ind)
+dfData$fGender = factor(dfSample$Gender)
+dfData$fEthnicity = factor(dfSample$Ethnicity)
+dfData$age = (dfSample$Age)
+dfData$Coef.1 = factor(dfData$fTreatment:dfData$ind)
+dfData$Coef.2 = factor(dfData$fGender:dfData$ind)
+dfData$Coef.3 = factor(dfData$fEthnicity:dfData$ind)
+dfData$Coef.4 = factor(dfData$ind)
 dim(dfData)
 dfData = droplevels.data.frame(dfData)
 #dfData = dfData[order(dfData$Coef, dfData$Coef.adj1, dfData$Coef.adj2), ]
@@ -98,34 +112,46 @@ str(dfData)
 # these db packages interfere with stan so unload 
 detach('package:org.Hs.eg.db', unload=T)
 ## setup the stan model
+library(Rcpp)
 library(rstan)
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
 
-stanDso = rstan::stan_model(file='tResponse1RandomEffectsMultipleScales.stan')
+stanDso = rstan::stan_model(file='tResponse3RandomEffects1SlopeMultipleScales.stan')
 
 
 ### setup data object for stan and run model
 ## subset the data to get the second level of nested parameters
 ## this is done to avoid loops in the stan script to map the scale parameters
 ## of each ind/gene to the respective set of coefficients for jitters
-d = dfData[!duplicated(dfData$Coef), ]
-#d2 = dfData[!duplicated(dfData$Coef.2), ]
+d = dfData[!duplicated(dfData$Coef.1), ]
+d2 = dfData[!duplicated(dfData$Coef.2), ]
+d3 = dfData[!duplicated(dfData$Coef.3), ]
+d4 = dfData[!duplicated(dfData$Coef.4), ]
 
 lStanData = list(Ntotal=nrow(dfData), 
-                 Nclusters1=nlevels(dfData$Coef),
-                 #Nclusters2=nlevels(dfData$Coef.2),
+                 Nclusters1=nlevels(dfData$Coef.1),
+                 Nclusters2=nlevels(dfData$Coef.2),
+                 Nclusters3=nlevels(dfData$Coef.3),
+                 Nclusters4=nlevels(dfData$Coef.4),
                  NScaleBatches1 = nlevels(dfData$ind), # to add a separate scale term for each gene
-                 #NScaleBatches2 = nlevels(dfData$ind), # to add a separate scale term for each gene
-                 NgroupMap1=as.numeric(dfData$Coef),
-                 #NgroupMap2=as.numeric(dfData$Coef.2),
+                 NScaleBatches2 = nlevels(dfData$ind), # to add a separate scale term for each gene
+                 NScaleBatches3 = nlevels(dfData$ind), # to add a separate scale term for each gene
+                 NScaleBatches4 = nlevels(dfData$ind), # to add a separate scale term for each gene
+                 NgroupMap1=as.numeric(dfData$Coef.1),
+                 NgroupMap2=as.numeric(dfData$Coef.2),
+                 NgroupMap3=as.numeric(dfData$Coef.3),
+                 NgroupMap4=as.numeric(dfData$Coef.4),
                  NBatchMap1=as.numeric(d$ind), # this is where we use the second level mapping
-                 #NBatchMap2=as.numeric(d2$ind), # this is where we use the second level mapping
+                 NBatchMap2=as.numeric(d2$ind), # this is where we use the second level mapping
+                 NBatchMap3=as.numeric(d3$ind), # this is where we use the second level mapping
+                 NBatchMap4=as.numeric(d4$ind), # this is where we use the second level mapping
                  Nnu=nlevels(dfData$ind),
                  NsigmaPop=nlevels(dfData$ind),
                  NnuMap=as.numeric(dfData$ind),
                  NsigmaPopMap=as.numeric(dfData$ind),
-                 y=dfData$values, 
+                 y=as.numeric(dfData$values),
+                 X = as.numeric(dfData$age),
                  intercept = mean(dfData$values), intercept_sd= sd(dfData$values)*3)
 
 initf = function(chain_id = 1) {
@@ -139,33 +165,37 @@ initf = function(chain_id = 1) {
 
 ptm = proc.time()
 
-fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=2,
+fit.stan = sampling(stanDso, data=lStanData, iter=2000, chains=2,
                     pars=c('sigmaRan1',
-                           #'sigmaRan2',
+                           'sigmaRan2',
+                           'sigmaRan3',
                            'nu',
                            #'mu',
                            'rGroupsJitter1',
-                           #'rGroupsJitter2',
+                           'rGroupsJitter2',
+                           'rGroupsJitter3',
+                           'rGroupsSlopes',
                            'betas',
+                           'slope',
                            'sigmaPop'
                     ),
-                    cores=2, init=initf)#, control=list(adapt_delta=0.99, max_treedepth = 11), init=initf)
+                    cores=2)#, init=initf)#, control=list(adapt_delta=0.99, max_treedepth = 11), init=initf)
 #save(fit.stan, file='results/fit.stan.nb_3Mar.rds')
 ptm.end = proc.time()
 print(fit.stan)
 ## compare with lme4
-# library(lme4)
-# fit.lme = lmer(values ~ 1 + (1 | Coef), data=dfData)
-# summary(fit.lme)
+library(lme4)
+fit.lme = lmer(values ~ 1 + age + (1 | Coef.1) + (1 | Coef.2) + (1 | Coef.3), data=dfData)
+summary(fit.lme)
 
 ## extract results
 ## get the coefficient of interest - Coef.1 (treatment) in our case from the random coefficients section
 mCoef = extract(fit.stan)$rGroupsJitter1
 dim(mCoef)
 # # ## get the intercept at population level
-# iIntercept = as.numeric(extract(fit.stan)$betas)
+iIntercept = as.numeric(extract(fit.stan)$betas)
 # ## add the intercept to each random effect variable, to get the full coefficient
-# mCoef = sweep(mCoef, 1, iIntercept, '+')
+mCoef = sweep(mCoef, 1, iIntercept, '+')
 
 ## function to calculate statistics for differences between coefficients
 getDifference = function(ivData, ivBaseline){
@@ -197,7 +227,7 @@ levels(d$fBatch)
 ## repeat this for each comparison
 
 ## get a p-value for each comparison
-l = tapply(d$cols, d$split, FUN = function(x, base='CLD-BA', deflection='CN') {
+l = tapply(d$cols, d$split, FUN = function(x, base='CN', deflection='CLD-BA') {
   c = x
   names(c) = as.character(d$fBatch[c])
   dif = getDifference(ivData = mCoef[,c[deflection]], ivBaseline = mCoef[,c[base]])
