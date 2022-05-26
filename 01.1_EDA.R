@@ -118,7 +118,7 @@ plot.dendogram(oDiag.1, fBatch, labels_cex = 0.8, cex.main=0.7)
 par(p.old)
 plot(oDiag.1@lData$PCA$sdev)
 # use the first 3 principal components
-mPC = oDiag.1@lData$PCA$x[,1:3]
+mPC = oDiag.1@lData$PCA$x[,1:2]
 
 ## try a linear mixed effect model to account for varince
 library(lme4)
@@ -154,12 +154,15 @@ dfData$Coef.4 = factor(dfData$fAge:dfData$ind)
 str(dfData)
 
 fit.lme1 = lmer(values ~ 1  + (1 | Coef.1), data=dfData)
-fit.lme2 = lmer(values ~ 1  + (1 | Coef.1) + (1 | Coef.2), data=dfData)
+fit.lme2 = lmer(values ~ 1 + (1 | Coef.1) + (1 | Coef.2), data=dfData)
 fit.lme3 = lmer(values ~ 1  + (1 | Coef.1) + (1 | Coef.3), data=dfData)
-fit.lme4 = lmer(values ~ 1  + (1 | Coef.1) + (1 | Coef.4), data=dfData)
+fit.lme4 = lmer(values ~ 1 + age + (1 | Coef.1) + (1 | Coef.2) + (1 | Coef.3), data=dfData)
 fit.lme5 = lmer(values ~ 1  + age + (1 | Coef.1), data=dfData)
 
-#anova(fit.lme1, fit.lme2, fit.lme3, fit.lme4)
+summary(fit.lme1)
+
+
+anova(fit.lme1, fit.lme5)
 
 # summary(fit.lme1)
 # summary(fit.lme2)
@@ -184,15 +187,15 @@ str(dfData)
 m1 = model.matrix(values ~ Coef.1 - 1, data=dfData)
 m2 = model.matrix(values ~ Coef.2 - 1, data=dfData)
 m3 = model.matrix(values ~ Coef.3 - 1, data=dfData)
-m4 = model.matrix(values ~ Coef.4 - 1, data=dfData)
+#m4 = model.matrix(values ~ age - 1, data=dfData)
 
-m = cbind(m1, m2, m3, m4)
+m = cbind(m1, m2, m3)#, m4)
 
 lStanData = list(Ntotal=nrow(dfData), Ncol=ncol(m), X=m,
-                 NscaleBatches=4, NBatchMap=c(rep(1, times=nlevels(dfData$Coef.1)),
+                 NscaleBatches=3, NBatchMap=c(rep(1, times=nlevels(dfData$Coef.1)),
                                               rep(2, times=nlevels(dfData$Coef.2)),
-                                              rep(3, times=nlevels(dfData$Coef.3)),
-                                              rep(4, times=nlevels(dfData$Coef.4))),
+                                              rep(3, times=nlevels(dfData$Coef.3))),
+                                              #rep(1, times=1)),
                  y=dfData$values)
 
 fit.stan.4 = sampling(stanDso, data=lStanData, iter=2000, chains=2, pars=c('betas', 'populationMean', 'sigmaPop', 'sigmaRan',
@@ -209,21 +212,39 @@ mCoef = extract(fit.stan.4)$betas
 dim(mCoef)
 dim(m)
 colnames(mCoef) = colnames(m)
+mCor = (cor(mCoef[,grep('PC2', colnames(mCoef))]))
+dim(mCor)
+colnames(mCor) = gsub('Coef.', '', colnames(mCor))
+rownames(mCor) = gsub('Coef.', '', rownames(mCor))
+heatmap(abs(mCor), Rowv = NA, Colv = NA, symm = T, scale = 'none', cexRow = 0.8, cexCol = 0.8)
+
 i = which(colnames(mCoef) %in% c("Coef.1CN:PC1", "Coef.1CN:PC2", "Coef.1CN:PC3"))
 i2 = which(colnames(mCoef) %in% c("Coef.3Middle_East:PC1", "Coef.3Middle_East:PC2", "Coef.3Middle_East:PC3"))
 colnames(mCoef)[c(i, i2)]
 pairs(mCoef[,c(i, i2)], pch=1, cex=0.2)
-# remove outliers
-mPlot = scale(mCoef[,c(i, i2)])
-mPlot[abs(mPlot) > 2.5] = NA
-pairs(mPlot, pch=1, cex=0.2)
+round(cor(mCoef[,c(i, i2)]), 2)
 
-i = grep('PC1', colnames(mCoef))
-pairs(mCoef[,c(i)], pch=1, cex=0.2)
+# # remove outliers
+# mPlot = scale(mCoef[,c(i, i2)])
+# mPlot[abs(mPlot) > 2.5] = NA
+# mPlot = apply(mPlot, 2, function(x) sample(x, 300, replace = T))
+# dim(mPlot)
+# pairs(mPlot, pch=1, cex=0.2)
+# 
+# #i = grep('PC1', colnames(mCoef))
+# mPlot = scale(mCoef)
+# mPlot = apply(mPlot, 2, function(x) sample(x, 500, replace = F))
+# dim(mPlot)
+# mPlot[abs(mPlot) > 4] = NA
+# colnames(mPlot) = gsub('Coef.|:PC1', '', colnames(mPlot))
+# pairs(mPlot[,c(5, 6, 7, 9, 10, 11)], pch=1, cex=0.2, col='grey')
+# pairs(mPlot[,c(3, 6, 7, 9, 10, 11)], pch=1, cex=0.2, col='grey')
+# 
+# #pairs(mCoef[,c(i)], pch=1, cex=0.2)
 
 m = extract(fit.stan.4)$sigmaRan
 dim(m)
-colnames(m) = c('T', 'G', 'E', 'A')
+colnames(m) = c('T', 'G', 'E')
 pairs(log(m), pch=1, cex=0.2)
 
 
@@ -242,6 +263,19 @@ print(fit.stan.2, c('populationMean', 'sigmaPop', 'sigmaRan', 'nu', 'betas'), di
 traceplot(fit.stan.2, 'populationMean')
 traceplot(fit.stan.2, 'sigmaPop')
 traceplot(fit.stan.2, 'sigmaRan')
+
+## extract coefficients of interest to plot
+mCoef = extract(fit.stan.2)$betas
+dim(mCoef)
+dim(m)
+colnames(mCoef) = colnames(m)
+mCor = (cor(mCoef[,grep('PC2', colnames(mCoef))]))
+dim(mCor)
+colnames(mCor) = gsub('Coef.', '', colnames(mCor))
+rownames(mCor) = gsub('Coef.', '', rownames(mCor))
+heatmap(abs(mCor), Rowv = NA, Colv = NA, symm = T, scale = 'none', cexRow = 0.8, cexCol = 0.8)
+
+pairs(mCoef[,c('Coef.1CN:PC1', 'Coef.1CLD-BC:PC1', 'Coef.1CLD-BA:PC1', 'Coef.2F:PC1', 'Coef.2M:PC1' )], pch=1, cex=0.2)
 
 ## some model scores and comparisons
 compare(fit.stan.4, fit.stan.2)
@@ -302,10 +336,10 @@ apply(mDraws.sim, 2, function(x) {
 m = cbind(extract(fit.stan.4)$sigmaRan, extract(fit.stan.4)$sigmaPop) 
 dim(m)
 m = log(m)
-colnames(m) = c('Treatment', 'Gender', 'Ethnicity', 'Age', 'Residual')
+colnames(m) = c('Treatment', 'Gender', 'Ethnicity', 'Residual')
 pairs(m, pch=20, cex=0.5, col='grey')
 
-df = stack(data.frame(m[,-5]))
+df = stack(data.frame(m[,-4]))
 histogram(~ values | ind, data=df, xlab='Log SD', scales=list(relation='free'))
 
 ## calculate bayesian p-value for this test statistic
