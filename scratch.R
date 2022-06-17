@@ -5,6 +5,23 @@
 # https://github.com/uhkniazi/BRC_Keloid/blob/57032328576d24948a611f5c6fe1ee7193cd5b05/Keloid_main/de_4_contrasts.R#L146
 
 
+# https://rdrr.io/bioc/DESeq/src/R/core.R#sym-estimateSizeFactorsForMatrix
+estimateSizeFactorsForMatrix <- function( counts, locfunc = median )
+{
+  loggeomeans <- rowMeans( log(counts) )
+  apply( counts, 2, function(cnts)
+    exp( locfunc( ( log(cnts) - loggeomeans )[ is.finite(loggeomeans) ] ) ) )
+}
+
+## modified version
+myEstimateSizeFactorsForMatrix <- function( counts, locfunc = median )
+{
+  loggeomeans <- rowMeans( (counts) )
+  apply( counts, 2, function(cnts)
+    ( locfunc( ( (cnts) - loggeomeans )[ is.finite(loggeomeans) ] ) ) )
+}
+
+
 stanDso = rstan::stan_model(file='tResponse1RandomEffectsMultipleScales.stan')
 
 

@@ -64,9 +64,9 @@ rn = sapply(rn, function(x) return(x[2]))
 identical(colnames(mData), rn)
 rownames(dfSample) = rn
 
-mCounts = mData
-dim(mCounts)
-dfSample$fAge = cut(dfSample$Age, 4, include.lowest = T, labels = 1:4)
+# mCounts = mData
+# dim(mCounts)
+# dfSample$fAge = cut(dfSample$Age, 4, include.lowest = T, labels = 1:4)
 
 str(dfSample)
 
@@ -75,9 +75,63 @@ xtabs( ~ dfSample$group1 + dfSample$Ethnicity)
 xtabs( ~ dfSample$group1 + dfSample$fAge)
 xtabs( ~ dfSample$Ethnicity + dfSample$Gender)
 
-iSub = which(dfSample$group2 %in% 'liver')
+iSub = which(dfSample$group1 %in% 'CLD-BA')
 
+mData = mData[,iSub]
+dfSample = dfSample[iSub,]
+
+# iSub = which(dfSample$group2 %in% 'muscle')
+# 
+# mData = mData[,-iSub]
+# dfSample = dfSample[-iSub,]
+dfSample = droplevels.data.frame(dfSample)
+str(dfSample)
+
+dim(mData)
+iGapdh = '16747338'
+iSrsf4 = '16684222'
+iSel = '16946825'
+iOthers = rownames(mData)[1:5000]
+mData.sub = mData[c(iGapdh, iSrsf4, iSel, iOthers), ]
+dim(mData.sub)
+t = dfSample$group2
+
+# x = mData['16946825',]
+# h = colMeans(mData[c(iSrsf4,iGapdh),])
+# df = data.frame(cbind(x, h))
+# df = stack(df)
+# df$tissue = dfSample$group2
+# df$pid = dfSample$group3
+library(lme4)
+# df$f = df$ind:df$tissue
+# f = lmer(values ~ 1 + (1 | f), data=df)
+# summary(f)
+# coef(f)
+# d = as.data.frame(VarCorr(f))
+
+v = rep(NA, times=5003)
+for (i in 1:5003){
+  f = lmer(mData.sub[i,] ~ 1 + (1 | t))
+  d = as.data.frame(VarCorr(f))
+  v[i] = d[d$grp == 't', 'sdcor']
+}
+names(v) = rownames(mData.sub)
+sort(round(v, 3), decreasing = T)[1:30]
+
+df = dfAnnotation[dfAnnotation$ID %in% rownames(mData.sub), ]
+dim(df)
+i = match(names(v), df$ID)
+df = df[i,]
+identical(names(v), as.character(df$ID))
+dfExport = data.frame(ID=as.character(names(v)), SD=round(v, 3), matchedID=as.character(df$ID), REFSEQ=as.character(df$GB_ACC), stringsAsFactors = F)
+df = select(x, keys = dfExport$REFSEQ, columns = 'ENTREZID', keytype = 'REFSEQ')
+dfExport$ENTREZID = df$ENTREZID
+write.csv(dfExport, file='temp/varianceCheck.csv')
+
+mCounts = sweep(log(mData), 2, log(mData[iSrsf4,]), '/')
+range(mCounts)
 ## some EDA diagnostic plots on the data matrix
+
 library(downloader)
 url = 'https://raw.githubusercontent.com/uhkniazi/CDiagnosticPlots/master/CDiagnosticPlots.R'
 download(url, 'CDiagnosticPlots.R')
@@ -88,12 +142,12 @@ source('CDiagnosticPlots.R')
 unlink('CDiagnosticPlots.R')
 
 colnames(mCounts) = as.character(dfSample$group1)
-oDiag.1 = CDiagnosticPlots(mCounts[,iSub], 'Liver')
+oDiag.1 = CDiagnosticPlots(mCounts, 'cld-ba')
 
 # the batch variable we wish to colour by, 
 # this can be any grouping/clustering in the data capture process
 str(dfSample)
-fBatch = factor(dfSample$Ethnicity[iSub])
+fBatch = factor(dfSample$group2)
 levels(fBatch)
 
 # choose a different grouping variable
@@ -183,18 +237,20 @@ library(rethinking)
 stanDso = rstan::stan_model(file='tResponsePartialPooling.stan')
 
 ######## models of various sizes using stan
+dfData = df
+dfData$values = log(dfData$values)
 str(dfData)
-m1 = model.matrix(values ~ Coef.1 - 1, data=dfData)
-m2 = model.matrix(values ~ Coef.2 - 1, data=dfData)
+m1 = model.matrix(values ~ f - 1, data=dfData)
+m2 = model.matrix(values ~ pid - 1, data=dfData)
 m3 = model.matrix(values ~ Coef.3 - 1, data=dfData)
 #m4 = model.matrix(values ~ age - 1, data=dfData)
 
-m = cbind(m1, m2, m3)#, m4)
+m = cbind(m1, m2)#, m4)
 
 lStanData = list(Ntotal=nrow(dfData), Ncol=ncol(m), X=m,
-                 NscaleBatches=3, NBatchMap=c(rep(1, times=nlevels(dfData$Coef.1)),
-                                              rep(2, times=nlevels(dfData$Coef.2)),
-                                              rep(3, times=nlevels(dfData$Coef.3))),
+                 NscaleBatches=2, NBatchMap=c(rep(1, times=nlevels(dfData$f)),
+                                              rep(2, times=nlevels(dfData$pid))),
+                                              # rep(3, times=nlevels(dfData$Coef.3))),
                                               #rep(1, times=1)),
                  y=dfData$values)
 
@@ -212,6 +268,13 @@ mCoef = extract(fit.stan.4)$betas
 dim(mCoef)
 dim(m)
 colnames(mCoef) = colnames(m)
+colnames(mCoef)
+muscle = mCoef[,'fx:muscle'] - mCoef[,'fh:muscle']
+liver = mCoef[,'fx:liver'] - mCoef[,'fh:liver']
+fat = mCoef[,'fx:fat'] - mCoef[,'fh:fat']
+ml = mCoef[,'fx:muscle'] - mCoef[,'fx:liver']
+
+
 mCor = (cor(mCoef[,grep('PC2', colnames(mCoef))]))
 dim(mCor)
 colnames(mCor) = gsub('Coef.', '', colnames(mCor))
