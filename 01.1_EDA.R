@@ -80,12 +80,49 @@ iSub = which(dfSample$group1 %in% 'CLD-BA')
 mData = mData[,iSub]
 dfSample = dfSample[iSub,]
 
+dfSample = droplevels.data.frame(dfSample)
+str(dfSample)
+
+xtabs( ~ dfSample$group2 + dfSample$Gender)
+xtabs( ~ dfSample$group2 + dfSample$Ethnicity)
+xtabs( ~ dfSample$group1 + dfSample$fAge)
+xtabs( ~ dfSample$Ethnicity + dfSample$Gender)
+xtabs( ~ dfSample$group3 + dfSample$group2)
+
+# deg analysis
+library(limma)
+fTissue = dfSample$group2
+levels(fTissue)
+fTissue = relevel(fTissue, 'liver')
+fPID = dfSample$group3
+nlevels(fPID)
+
+design = model.matrix(~ fTissue + fPID, data=dfSample)
+head(design)
+
+dim(mData)
+dim(design)
+fit = lmFit(mData, design)
+fit = eBayes(fit)
+
+dfLimmma.2 = topTable(fit, coef = 2, adjust='BH', number=Inf)
+hist(dfLimmma.2$logFC)
+hist(dfLimmma.2$adj.P.Val)
+table(dfLimmma.2$adj.P.Val < 0.01)
+
+dfLimmma.3 = topTable(fit, coef = 3, adjust='BH', number=Inf)
+hist(dfLimmma.3$logFC)
+hist(dfLimmma.3$adj.P.Val)
+table(dfLimmma.3$adj.P.Val < 0.01)
+
+
+dfLimmma.2 = dfLimmma.2[order(dfLimmma.2$P.Value, decreasing = F),]
+head(dfLimmma.2)
+
 # iSub = which(dfSample$group2 %in% 'muscle')
 # 
 # mData = mData[,-iSub]
 # dfSample = dfSample[-iSub,]
-dfSample = droplevels.data.frame(dfSample)
-str(dfSample)
 
 dim(mData)
 iGapdh = '16747338'
