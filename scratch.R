@@ -4,6 +4,13 @@
 # https://github.com/uhkniazi/BRC_FOG1KO_John_PID_25/blob/8f9a034eceb6399760db58759f45321338bff737/10_deAnalysis.R#L168
 # https://github.com/uhkniazi/BRC_Keloid/blob/57032328576d24948a611f5c6fe1ee7193cd5b05/Keloid_main/de_4_contrasts.R#L146
 
+##################################################
+library(UpSetR)
+mutations <- read.csv( system.file("extdata", "mutations.csv", package = "UpSetR"), header=T, sep = ",")
+
+df = read.csv(file.choose(), header=T, stringsAsFactors = F)
+upset(df, sets = colnames(df)[2:5], sets.bar.color = "#56B4E9",
+      order.by = "freq", empty.intersections = NULL)
 
 stanDso = rstan::stan_model(file='tResponse1RandomEffectsMultipleScales.stan')
 
